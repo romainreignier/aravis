@@ -49,6 +49,7 @@ libm = cc.find_library ('m', required: true)
 
 aravis_public_dependencies = [glib_dep, gobject_dep, gio_dep]
 aravis_dependencies = [aravis_public_dependencies, xml2_dep, libz_dep, libm]
+
 if usb_dep.found()
   aravis_dependencies += usb_dep
 endif

@@ -214,6 +214,26 @@ if usb_dep.found()
 		]
 endif
 
+if get_option('v4l2')
+	library_sources += [
+		'arvv4l2interface.c',
+		'arvv4l2device.c',
+		'arvv4l2stream.c'
+	]
+	library_no_introspection_sources += [
+	]
+	library_headers += [
+		'arvv4l2interface.h',
+		'arvv4l2device.h',
+		'arvv4l2stream.h'
+	]
+	library_private_headers += [
+		'arvv4l2deviceprivate.h',
+		'arvv4l2interfaceprivate.h',
+		'arvv4l2streamprivate.h',
+		]
+endif
+
 library_enums = gnome.mkenums_simple ('arvenumtypes', sources: library_headers + library_no_introspection_headers)
 library_private_enums = gnome.mkenums_simple ('arvenumtypesprivate', sources: library_private_headers)
 library_resources = gnome.compile_resources('arvresources','arvresources.xml')
@@ -222,6 +242,7 @@ library_include_dir = join_paths (get_option ('includedir'), 'aravis-@0@'.format
 
 library_config_data = configuration_data ()
 library_config_data.set10 ('ARAVIS_HAS_USB', usb_dep.found())
+library_config_data.set10 ('ARAVIS_HAS_V4L2', get_option('v4l2'))
 library_config_data.set10 ('ARAVIS_HAS_PACKET_SOCKET', packet_socket_enabled)
 library_config_data.set10 ('ARAVIS_HAS_FAST_HEARTBEAT', get_option ('fast-heartbeat'))
 configure_file (input: 'arvfeatures.h.in', output: 'arvfeatures.h',
