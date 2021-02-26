@@ -112,7 +112,7 @@ arv_v4l2_device_write_register (ArvDevice *device, guint64 address, guint32 valu
  */
 
 ArvDevice *
-arv_v4l2_device_new (GError **error)
+arv_v4l2_device_new (const char *device_file, GError **error)
 {
 	return g_initable_new (ARV_TYPE_V4L2_DEVICE, NULL, error, NULL);
 }

@@ -40,6 +40,7 @@
 struct _ArvV4l2Interface {
 	ArvInterface	interface;
 
+	GHashTable *devices;
 	GUdevClient *udev;
 };
 
@@ -49,6 +50,71 @@ struct _ArvV4l2InterfaceClass {
 
 G_DEFINE_TYPE (ArvV4l2Interface, arv_v4l2_interface, ARV_TYPE_INTERFACE)
 
+typedef struct {
+	char *id;
+	char *bus;
+	char *device_file;
+
+	volatile gint ref_count;
+} ArvV4l2InterfaceDeviceInfos;
+
+static ArvV4l2InterfaceDeviceInfos *
+arv_v4l2_interface_device_infos_new (const char *device_file)
+{
+	ArvV4l2InterfaceDeviceInfos *infos;
+
+	g_return_val_if_fail (device_file != NULL, NULL);
+
+	if (strncmp ("/dev/vbi", device_file,  8) != 0) {
+		int fd;
+
+		fd = v4l2_open (device_file, O_RDWR);
+		if (fd != -1) {
+			struct v4l2_capability cap;
+
+			if (v4l2_ioctl (fd, VIDIOC_QUERYCAP, &cap) != -1 &&
+			    ((cap.capabilities & V4L2_CAP_VIDEO_CAPTURE) != 0) &&
+			    ((cap.capabilities & V4L2_CAP_READWRITE) != 0)) {
+				infos = g_new0 (ArvV4l2InterfaceDeviceInfos, 1);
+
+				infos->ref_count = 1;
+				infos->id = g_strdup ((char *) cap.card);
+				infos->bus = g_strdup ((char *) cap.bus_info);
+				infos->device_file = g_strdup (device_file);
+
+				return infos;
+			}
+			v4l2_close (fd);
+		}
+	}
+
+	return NULL;
+}
+
+static ArvV4l2InterfaceDeviceInfos *
+arv_v4l2_interface_device_infos_ref (ArvV4l2InterfaceDeviceInfos *infos)
+{
+	g_return_val_if_fail (infos != NULL, NULL);
+	g_return_val_if_fail (g_atomic_int_get (&infos->ref_count) > 0, NULL);
+
+	g_atomic_int_inc (&infos->ref_count);
+
+	return infos;
+}
+
+static void
+arv_v4l2_interface_device_infos_unref (ArvV4l2InterfaceDeviceInfos *infos)
+{
+	g_return_if_fail (infos != NULL);
+	g_return_if_fail (g_atomic_int_get (&infos->ref_count) > 0);
+
+	if (g_atomic_int_dec_and_test (&infos->ref_count)) {
+		g_free (infos->id);
+		g_free (infos->bus);
+		g_free (infos->device_file);
+		g_free (infos);
+	}
+}
 static void
 arv_v4l2_interface_update_device_list (ArvInterface *interface, GArray *device_ids)
 {
@@ -57,31 +123,36 @@ arv_v4l2_interface_update_device_list (ArvInterface *interface, GArray *device_i
 
 	g_assert (device_ids->len == 0);
 
+	g_hash_table_remove_all (v4l2_interface->devices);
+
 	devices = g_udev_client_query_by_subsystem (v4l2_interface->udev, "video4linux");
 
 	for (elem = g_list_first (devices); elem; elem = g_list_next (elem)) {
-		const char *device_file;
+		ArvV4l2InterfaceDeviceInfos *device_infos;
 
-		device_file = g_udev_device_get_device_file (elem->data);
-
-		if (strncmp ("/dev/vbi", device_file,  8) != 0) {
+		device_infos = arv_v4l2_interface_device_infos_new (g_udev_device_get_device_file (elem->data));
+		if (device_infos != NULL) {
 			ArvInterfaceDeviceIds *ids;
-			int fd;
 
-			fd = v4l2_open (device_file, O_RDWR);
-			if (fd != -1) {
-				struct v4l2_capability cap;
+			g_hash_table_replace (v4l2_interface->devices,
+					      device_infos->id,
+					      arv_v4l2_interface_device_infos_ref (device_infos));
+			g_hash_table_replace (v4l2_interface->devices,
+					      device_infos->bus,
+					      arv_v4l2_interface_device_infos_ref (device_infos));
+			g_hash_table_replace (v4l2_interface->devices,
+					      device_infos->device_file,
+					      arv_v4l2_interface_device_infos_ref (device_infos));
 
-				if (v4l2_ioctl (fd, VIDIOC_QUERYCAP, &cap) != -1) {
-					ids = g_new0 (ArvInterfaceDeviceIds, 1);
+			ids = g_new0 (ArvInterfaceDeviceIds, 1);
 
-					ids->device = g_strdup ((char *) cap.card);
-					ids->physical = g_strdup ((char *) cap.bus_info);
+			ids->device = g_strdup (device_infos->id);
+			ids->physical = g_strdup (device_infos->bus);
+			ids->address = g_strdup (device_infos->device_file);
 
-					g_array_append_val (device_ids, ids);
-				}
-				v4l2_close (fd);
-			}
+			g_array_append_val (device_ids, ids);
+
+			arv_v4l2_interface_device_infos_unref (device_infos);
 		}
 
 		g_object_unref (elem->data);
@@ -93,11 +164,18 @@ arv_v4l2_interface_update_device_list (ArvInterface *interface, GArray *device_i
 static ArvDevice *
 arv_v4l2_interface_open_device (ArvInterface *interface, const char *device_id, GError **error)
 {
+	ArvV4l2Interface *v4l2_interface = ARV_V4L2_INTERFACE (interface);
+	ArvV4l2InterfaceDeviceInfos *device_infos;
+
+	device_infos = g_hash_table_lookup (v4l2_interface->devices, device_id);
+	if (device_infos != NULL)
+		return arv_v4l2_device_new (device_infos->device_file, error);
+
 	return NULL;
 }
 
-static ArvInterface *v4l2_interface = NULL;
-static GMutex v4l2_interface_mutex;
+static ArvInterface *arv_v4l2_interface = NULL;
+static GMutex arv_v4l2_interface_mutex;
 
 /**
  * arv_v4l2_interface_get_instance:
@@ -110,27 +188,27 @@ static GMutex v4l2_interface_mutex;
 ArvInterface *
 arv_v4l2_interface_get_instance (void)
 {
-	g_mutex_lock (&v4l2_interface_mutex);
+	g_mutex_lock (&arv_v4l2_interface_mutex);
 
-	if (v4l2_interface == NULL)
-		v4l2_interface = g_object_new (ARV_TYPE_V4L2_INTERFACE, NULL);
+	if (arv_v4l2_interface == NULL)
+		arv_v4l2_interface = g_object_new (ARV_TYPE_V4L2_INTERFACE, NULL);
 
-	g_mutex_unlock (&v4l2_interface_mutex);
+	g_mutex_unlock (&arv_v4l2_interface_mutex);
 
-	return ARV_INTERFACE (v4l2_interface);
+	return ARV_INTERFACE (arv_v4l2_interface);
 }
 
 void
 arv_v4l2_interface_destroy_instance (void)
 {
-	g_mutex_lock (&v4l2_interface_mutex);
+	g_mutex_lock (&arv_v4l2_interface_mutex);
 
-	if (v4l2_interface != NULL) {
-		g_object_unref (v4l2_interface);
-		v4l2_interface = NULL;
+	if (arv_v4l2_interface != NULL) {
+		g_object_unref (arv_v4l2_interface);
+		arv_v4l2_interface = NULL;
 	}
 
-	g_mutex_unlock (&v4l2_interface_mutex);
+	g_mutex_unlock (&arv_v4l2_interface_mutex);
 }
 
 static void
@@ -139,11 +217,19 @@ arv_v4l2_interface_init (ArvV4l2Interface *v4l2_interface)
 	const gchar *const subsystems[] = {"video4linux", NULL};
 
 	v4l2_interface->udev = g_udev_client_new (subsystems);
+
+	v4l2_interface->devices = g_hash_table_new_full (g_str_hash, g_str_equal, NULL,
+							 (GDestroyNotify) arv_v4l2_interface_device_infos_unref);
 }
 
 static void
 arv_v4l2_interface_finalize (GObject *object)
 {
+	ArvV4l2Interface *v4l2_interface = ARV_V4L2_INTERFACE (object);
+
+	g_hash_table_unref (v4l2_interface->devices);
+	v4l2_interface->devices = NULL;
+
 	G_OBJECT_CLASS (arv_v4l2_interface_parent_class)->finalize (object);
 }
 

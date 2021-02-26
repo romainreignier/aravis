@@ -35,7 +35,7 @@ G_BEGIN_DECLS
 #define ARV_TYPE_V4L2_DEVICE (arv_v4l2_device_get_type ())
 G_DECLARE_FINAL_TYPE (ArvV4l2Device, arv_v4l2_device, ARV, V4L2_DEVICE, ArvDevice)
 
-ArvDevice * 	arv_v4l2_device_new 			(GError **error);
+ArvDevice * 	arv_v4l2_device_new 			(const char *device_file, GError **error);
 
 G_END_DECLS
 
