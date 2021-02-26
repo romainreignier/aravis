@@ -214,8 +214,8 @@ if usb_dep.found()
 		]
 endif
 
-if get_option('v4l2')
-	library_sources += [
+if v4l2_dep.found()
+  library_sources += [
 		'arvv4l2interface.c',
 		'arvv4l2device.c',
 		'arvv4l2stream.c'
@@ -242,7 +242,7 @@ library_include_dir = join_paths (get_option ('includedir'), 'aravis-@0@'.format
 
 library_config_data = configuration_data ()
 library_config_data.set10 ('ARAVIS_HAS_USB', usb_dep.found())
-library_config_data.set10 ('ARAVIS_HAS_V4L2', get_option('v4l2'))
+library_config_data.set10 ('ARAVIS_HAS_V4L2', v4l2_dep.found())
 library_config_data.set10 ('ARAVIS_HAS_PACKET_SOCKET', packet_socket_enabled)
 library_config_data.set10 ('ARAVIS_HAS_FAST_HEARTBEAT', get_option ('fast-heartbeat'))
 configure_file (input: 'arvfeatures.h.in', output: 'arvfeatures.h',

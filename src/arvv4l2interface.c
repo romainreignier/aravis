@@ -30,10 +30,17 @@
 #include <arvinterfaceprivate.h>
 #include <arvv4l2device.h>
 #include <arvdebug.h>
+#include <gudev/gudev.h>
+#include <libv4l2.h>
+#include <linux/videodev2.h>
+#include <fcntl.h>
+#include <errno.h>
 #include <arvmisc.h>
 
 struct _ArvV4l2Interface {
 	ArvInterface	interface;
+
+	GUdevClient *udev;
 };
 
 struct _ArvV4l2InterfaceClass {
@@ -45,7 +52,42 @@ G_DEFINE_TYPE (ArvV4l2Interface, arv_v4l2_interface, ARV_TYPE_INTERFACE)
 static void
 arv_v4l2_interface_update_device_list (ArvInterface *interface, GArray *device_ids)
 {
+	ArvV4l2Interface *v4l2_interface = ARV_V4L2_INTERFACE (interface);
+	GList *devices, *elem;
+
 	g_assert (device_ids->len == 0);
+
+	devices = g_udev_client_query_by_subsystem (v4l2_interface->udev, "video4linux");
+
+	for (elem = g_list_first (devices); elem; elem = g_list_next (elem)) {
+		const char *device_file;
+
+		device_file = g_udev_device_get_device_file (elem->data);
+
+		if (strncmp ("/dev/vbi", device_file,  8) != 0) {
+			ArvInterfaceDeviceIds *ids;
+			int fd;
+
+			fd = v4l2_open (device_file, O_RDWR);
+			if (fd != -1) {
+				struct v4l2_capability cap;
+
+				if (v4l2_ioctl (fd, VIDIOC_QUERYCAP, &cap) != -1) {
+					ids = g_new0 (ArvInterfaceDeviceIds, 1);
+
+					ids->device = g_strdup ((char *) cap.card);
+					ids->physical = g_strdup ((char *) cap.bus_info);
+
+					g_array_append_val (device_ids, ids);
+				}
+				v4l2_close (fd);
+			}
+		}
+
+		g_object_unref (elem->data);
+	}
+
+	g_list_free (devices);
 }
 
 static ArvDevice *
@@ -94,6 +136,9 @@ arv_v4l2_interface_destroy_instance (void)
 static void
 arv_v4l2_interface_init (ArvV4l2Interface *v4l2_interface)
 {
+	const gchar *const subsystems[] = {"video4linux", NULL};
+
+	v4l2_interface->udev = g_udev_client_new (subsystems);
 }
 
 static void
