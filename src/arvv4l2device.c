@@ -36,6 +36,9 @@ enum
 };
 
 typedef struct {
+	char *genicam_xml;
+	size_t genicam_xml_size;
+
 	ArvGc *genicam;
 } ArvV4l2DevicePrivate;
 
@@ -62,8 +65,9 @@ arv_v4l2_device_create_stream (ArvDevice *device, ArvStreamCallback callback, vo
 static const char *
 arv_v4l2_device_get_genicam_xml (ArvDevice *device, size_t *size)
 {
-	/* FIXME */
-	return NULL;
+	ArvV4l2DevicePrivate *priv = arv_v4l2_device_get_instance_private (ARV_V4L2_DEVICE (device));
+
+	return priv->genicam_xml;
 }
 
 static ArvGc *
@@ -128,6 +132,7 @@ arv_v4l2_device_finalize (GObject *object)
 	ArvV4l2DevicePrivate *priv = arv_v4l2_device_get_instance_private (ARV_V4L2_DEVICE (object));
 
 	g_clear_object (&priv->genicam);
+	g_clear_pointer (&priv->genicam_xml, g_free);
 
 	G_OBJECT_CLASS (arv_v4l2_device_parent_class)->finalize (object);
 }
@@ -135,6 +140,32 @@ arv_v4l2_device_finalize (GObject *object)
 static void
 arv_v4l2_device_constructed (GObject *self)
 {
+	ArvV4l2DevicePrivate *priv = arv_v4l2_device_get_instance_private (ARV_V4L2_DEVICE (self));
+	GBytes *bytes;
+	GError *error = NULL;
+
+	bytes = g_resources_lookup_data("/org/aravis/arv-v4l2.xml",
+					G_RESOURCE_LOOKUP_FLAGS_NONE, &error);
+	if (error != NULL) {
+		arv_device_take_init_error (ARV_DEVICE (self),
+					    g_error_new (ARV_DEVICE_ERROR, ARV_DEVICE_ERROR_GENICAM_NOT_FOUND,
+							 "%s", error->message));
+		g_clear_error (&error);
+		return;
+	}
+
+	priv->genicam_xml = g_strndup (g_bytes_get_data(bytes,NULL), g_bytes_get_size(bytes));
+	priv->genicam_xml_size = g_bytes_get_size(bytes);
+
+	g_bytes_unref (bytes);
+
+	priv->genicam = arv_gc_new (ARV_DEVICE (self), priv->genicam_xml, priv->genicam_xml_size);
+	if (!ARV_IS_GC (priv->genicam)) {
+		arv_device_take_init_error (ARV_DEVICE (self),
+					    g_error_new (ARV_DEVICE_ERROR, ARV_DEVICE_ERROR_GENICAM_NOT_FOUND,
+							 "Invalid Genicam data"));
+		return;
+	}
 }
 
 static void
