@@ -54,6 +54,7 @@ typedef struct {
 	char *id;
 	char *bus;
 	char *device_file;
+	char *version;
 
 	volatile gint ref_count;
 } ArvV4l2InterfaceDeviceInfos;
@@ -74,6 +75,7 @@ arv_v4l2_interface_device_infos_new (const char *device_file)
 
 			if (v4l2_ioctl (fd, VIDIOC_QUERYCAP, &cap) != -1 &&
 			    ((cap.capabilities & V4L2_CAP_VIDEO_CAPTURE) != 0) &&
+			    ((cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE) == 0) &&
 			    ((cap.capabilities & V4L2_CAP_READWRITE) != 0)) {
 				infos = g_new0 (ArvV4l2InterfaceDeviceInfos, 1);
 
@@ -81,6 +83,10 @@ arv_v4l2_interface_device_infos_new (const char *device_file)
 				infos->id = g_strdup ((char *) cap.card);
 				infos->bus = g_strdup ((char *) cap.bus_info);
 				infos->device_file = g_strdup (device_file);
+				infos->version = g_strdup_printf ("%d.%d.%d",
+								  (cap.version >> 16) & 0xff,
+								  (cap.version >>  8) & 0xff,
+								  (cap.version >>  0) & 0xff);
 
 				return infos;
 			}
@@ -112,16 +118,15 @@ arv_v4l2_interface_device_infos_unref (ArvV4l2InterfaceDeviceInfos *infos)
 		g_free (infos->id);
 		g_free (infos->bus);
 		g_free (infos->device_file);
+		g_free (infos->version);
 		g_free (infos);
 	}
 }
-static void
-arv_v4l2_interface_update_device_list (ArvInterface *interface, GArray *device_ids)
-{
-	ArvV4l2Interface *v4l2_interface = ARV_V4L2_INTERFACE (interface);
-	GList *devices, *elem;
 
-	g_assert (device_ids->len == 0);
+static void
+_discover (ArvV4l2Interface *v4l2_interface, GArray *device_ids)
+{
+	GList *devices, *elem;
 
 	g_hash_table_remove_all (v4l2_interface->devices);
 
@@ -144,13 +149,18 @@ arv_v4l2_interface_update_device_list (ArvInterface *interface, GArray *device_i
 					      device_infos->device_file,
 					      arv_v4l2_interface_device_infos_ref (device_infos));
 
-			ids = g_new0 (ArvInterfaceDeviceIds, 1);
+			if (device_ids != NULL) {
+				ids = g_new0 (ArvInterfaceDeviceIds, 1);
 
-			ids->device = g_strdup (device_infos->id);
-			ids->physical = g_strdup (device_infos->bus);
-			ids->address = g_strdup (device_infos->device_file);
+				ids->device = g_strdup (device_infos->id);
+				ids->physical = g_strdup (device_infos->bus);
+				ids->address = g_strdup (device_infos->device_file);
+				ids->vendor = g_strdup ("Aravis");
+				ids->model = g_strdup (device_infos->id);
+				ids->serial_nbr = g_strdup ("1");
 
-			g_array_append_val (device_ids, ids);
+				g_array_append_val (device_ids, ids);
+			}
 
 			arv_v4l2_interface_device_infos_unref (device_infos);
 		}
@@ -161,17 +171,53 @@ arv_v4l2_interface_update_device_list (ArvInterface *interface, GArray *device_i
 	g_list_free (devices);
 }
 
+static void
+arv_v4l2_interface_update_device_list (ArvInterface *interface, GArray *device_ids)
+{
+	ArvV4l2Interface *v4l2_interface = ARV_V4L2_INTERFACE (interface);
+
+	g_assert (device_ids->len == 0);
+
+	_discover (v4l2_interface, device_ids);
+}
+
 static ArvDevice *
-arv_v4l2_interface_open_device (ArvInterface *interface, const char *device_id, GError **error)
+_open_device (ArvInterface *interface, const char *device_id, GError **error)
 {
 	ArvV4l2Interface *v4l2_interface = ARV_V4L2_INTERFACE (interface);
 	ArvV4l2InterfaceDeviceInfos *device_infos;
 
-	device_infos = g_hash_table_lookup (v4l2_interface->devices, device_id);
+	if (device_id == NULL) {
+		GList *device_list;
+
+		device_list = g_hash_table_get_values (v4l2_interface->devices);
+		device_infos = device_list != NULL ? device_list->data : NULL;
+		g_list_free (device_list);
+	} else
+		device_infos = g_hash_table_lookup (v4l2_interface->devices, device_id);
+
 	if (device_infos != NULL)
 		return arv_v4l2_device_new (device_infos->device_file, error);
 
 	return NULL;
+}
+
+static ArvDevice *
+arv_v4l2_interface_open_device (ArvInterface *interface, const char *device_id, GError **error)
+{
+	ArvDevice *device;
+	GError *local_error = NULL;
+
+	device = _open_device (interface, device_id, error);
+	if (ARV_IS_DEVICE (device) || local_error != NULL) {
+		if (local_error != NULL)
+			g_propagate_error (error, local_error);
+		return device;
+	}
+
+	_discover (ARV_V4L2_INTERFACE (interface), NULL);
+
+	return _open_device (interface, device_id, error);
 }
 
 static ArvInterface *arv_v4l2_interface = NULL;
