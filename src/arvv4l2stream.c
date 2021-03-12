@@ -35,6 +35,7 @@
 typedef struct {
 	ArvStream *stream;
 
+	ArvV4l2Device *v4l2_device;
 	ArvStreamCallback callback;
 	void *callback_data;
 
@@ -174,7 +175,7 @@ arv_v4l2_stream_constructed (GObject *object)
 	thread_data->stream = stream;
 
 	g_object_get (object,
-		      "device", &v4l2_device,
+		      "device", &thread_data->v4l2_device,
 		      "callback", &thread_data->callback,
 		      "callback-data", &thread_data->callback_data,
 		      NULL);
@@ -223,6 +224,7 @@ arv_v4l2_stream_finalize (GObject *object)
 	arv_v4l2_stream_stop_thread (ARV_STREAM (v4l2_stream));
 
 	if (priv->thread_data != NULL) {
+		g_clear_object (&priv->thread_data->v4l2_device);
 		g_clear_pointer (&priv->thread_data, g_free);
 	}
 
