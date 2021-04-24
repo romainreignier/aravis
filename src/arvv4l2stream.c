@@ -72,7 +72,7 @@ arv_v4l2_stream_thread (void *data)
 	ArvV4l2StreamThreadData *thread_data = data;
 	ArvBuffer *buffer;
 
-	arv_log_stream_thread ("[V4l2Stream::thread] Start");
+	arv_info_stream_thread ("[V4l2Stream::thread] Start");
 
 	if (thread_data->callback != NULL)
 		thread_data->callback (thread_data->callback_data, ARV_STREAM_CALLBACK_TYPE_INIT, NULL);
@@ -101,7 +101,7 @@ arv_v4l2_stream_thread (void *data)
 	if (thread_data->callback != NULL)
 		thread_data->callback (thread_data->callback_data, ARV_STREAM_CALLBACK_TYPE_EXIT, NULL);
 
-	arv_log_stream_thread ("[V4l2Stream::thread] Stop");
+	arv_info_stream_thread ("[V4l2Stream::thread] Stop");
 
 	return NULL;
 }
