@@ -101,15 +101,20 @@ arv_v4l2_device_read_memory (ArvDevice *device, guint64 address, guint32 size, v
 	ArvV4l2DevicePrivate *priv = arv_v4l2_device_get_instance_private (ARV_V4L2_DEVICE (device));
 
 	if (address == ARV_V4L2_ADDRESS_DEVICE_VENDOR_NAME) {
-		strncpy (buffer, priv->device_driver, size);
+		strncpy (buffer, priv->device_driver, size - 1);
+                ((char *) buffer)[size - 1] = '\0';
 	} else if (address == ARV_V4L2_ADDRESS_DEVICE_MODEL_NAME) {
-		strncpy (buffer, priv->device_card, size);
+		strncpy (buffer, priv->device_card, size - 1);
+                ((char *) buffer)[size - 1] = '\0';
 	} else if (address == ARV_V4L2_ADDRESS_DEVICE_VERSION) {
-		strncpy (buffer, priv->device_version, size);
+		strncpy (buffer, priv->device_version, size - 1);
+                ((char *) buffer)[size - 1] = '\0';
 	} else if (address == ARV_V4L2_ADDRESS_DEVICE_MANUFACTURER_INFO) {
-		strncpy (buffer, "Aravis", size);
+		strncpy (buffer, "Aravis", size - 1);
+                ((char *) buffer)[size - 1] = '\0';
 	} else if (address == ARV_V4L2_ADDRESS_DEVICE_ID) {
-		strncpy (buffer, priv->device_file, size);
+		strncpy (buffer, priv->device_file, size - 1);
+                ((char *) buffer)[size - 1] = '\0';
 	} else {
 		/* TODO set error */
 		return FALSE;
