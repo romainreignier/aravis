@@ -100,6 +100,9 @@ arv_v4l2_device_read_memory (ArvDevice *device, guint64 address, guint32 size, v
 {
 	ArvV4l2DevicePrivate *priv = arv_v4l2_device_get_instance_private (ARV_V4L2_DEVICE (device));
 
+        if (size < 1 || buffer == NULL)
+                return FALSE;
+
 	if (address == ARV_V4L2_ADDRESS_DEVICE_VENDOR_NAME) {
 		strncpy (buffer, priv->device_driver, size - 1);
                 ((char *) buffer)[size - 1] = '\0';
