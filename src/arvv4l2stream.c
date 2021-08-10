@@ -189,26 +189,16 @@ arv_v4l2_stream_constructed (GObject *object)
 	priv->thread_data = thread_data;
 
 	arv_v4l2_stream_start_thread (ARV_STREAM (v4l2_stream));
+
+        arv_stream_declare_info (ARV_STREAM (v4l2_stream), "n_completed_buffers",
+                                 G_TYPE_UINT64, &priv->thread_data->n_completed_buffers);
+        arv_stream_declare_info (ARV_STREAM (v4l2_stream), "n_failures",
+                                 G_TYPE_UINT64, &priv->thread_data->n_failures);
+        arv_stream_declare_info (ARV_STREAM (v4l2_stream), "n_underruns",
+                                 G_TYPE_UINT64, &priv->thread_data->n_underruns);
 }
 
 /* ArvStream implementation */
-
-static void
-arv_v4l2_stream_get_statistics (ArvStream *stream,
-				guint64 *n_completed_buffers,
-				guint64 *n_failures,
-				guint64 *n_underruns)
-{
-	ArvV4l2Stream *v4l2_stream = ARV_V4L2_STREAM (stream);
-	ArvV4l2StreamPrivate *priv = arv_v4l2_stream_get_instance_private (v4l2_stream);
-	ArvV4l2StreamThreadData *thread_data;
-
-	thread_data = priv->thread_data;
-
-	*n_completed_buffers = thread_data->n_completed_buffers;
-	*n_failures = thread_data->n_failures;
-	*n_underruns = thread_data->n_underruns;
-}
 
 static void
 arv_v4l2_stream_init (ArvV4l2Stream *v4l2_stream)
@@ -242,5 +232,4 @@ arv_v4l2_stream_class_init (ArvV4l2StreamClass *v4l2_stream_class)
 
 	stream_class->start_thread = arv_v4l2_stream_start_thread;
 	stream_class->stop_thread = arv_v4l2_stream_stop_thread;
-	stream_class->get_statistics = arv_v4l2_stream_get_statistics;
 }
