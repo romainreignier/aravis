@@ -91,6 +91,10 @@ viewer_deps = aravis_dependencies + [dependency ('gtk+-3.0', version: '>=3.12', 
 subdir ('po', if_found: viewer_deps)
 subdir ('viewer', if_found: viewer_deps)
 
+if get_option('drivers')
+  subdir('drivers')
+endif
+
 gst_option = get_option ('gst-plugin')
 gst_deps = aravis_dependencies + [dependency ('gstreamer-base-1.0', required: gst_option),
                                   dependency ('gstreamer-app-1.0', required: gst_option)]

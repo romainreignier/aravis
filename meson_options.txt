@@ -8,6 +8,8 @@ option('packet-socket', type: 'feature', value: 'auto', description : 'Enable pa
 option('tests', type: 'boolean', value: true, description: 'Build tests')
 option('fast-heartbeat', type: 'boolean', value: false, description: 'Enable faster heartbeat rate')
 
+option('drivers', type: 'boolean', value: false, description: 'Build linux driver')
+
 # Documentation and introspection
 
 option('documentation', type: 'feature', value: 'auto', description: 'Build API reference (requires gtk-doc and xlstproc)')
