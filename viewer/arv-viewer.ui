@@ -54,7 +54,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
     <property name="can-focus">False</property>
     <property name="relative-to">acquisition_button</property>
     <child>
-      <!-- n-columns=5 n-rows=3 -->
+      <!-- n-columns=5 n-rows=4 -->
       <object class="GtkGrid" id="grid2">
         <property name="visible">True</property>
         <property name="can-focus">False</property>
@@ -229,13 +229,55 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
           </packing>
         </child>
         <child>
-          <object class="GtkComboBox" id="trigger_combobox">
+          <object class="GtkComboBoxText" id="trigger_source_combobox">
+            <property name="visible">True</property>
             <property name="can-focus">False</property>
           </object>
           <packing>
-            <property name="left-attach">0</property>
-            <property name="top-attach">0</property>
+            <property name="left-attach">2</property>
+            <property name="top-attach">3</property>
           </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="trigger_source_label">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="label" translatable="yes">Trigger Source:</property>
+          </object>
+          <packing>
+            <property name="left-attach">1</property>
+            <property name="top-attach">3</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkButton" id="trigger_button">
+            <property name="label" translatable="yes">Trigger</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+          </object>
+          <packing>
+            <property name="left-attach">4</property>
+            <property name="top-attach">3</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkToggleButton" id="trigger_mode_togglebutton">
+            <property name="label" translatable="yes">Trigger Mode</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+          </object>
+          <packing>
+            <property name="left-attach">0</property>
+            <property name="top-attach">3</property>
+          </packing>
+        </child>
+        <child>
+          <placeholder/>
+        </child>
+        <child>
+          <placeholder/>
         </child>
       </object>
     </child>

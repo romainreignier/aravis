@@ -165,7 +165,9 @@ struct  _ArvViewer {
 	GtkWidget *video_frame;
 	GtkWidget *fps_label;
 	GtkWidget *image_label;
-	GtkWidget *trigger_combo_box;
+	GtkWidget *trigger_source_combo_box;
+	GtkWidget *trigger_button;
+	GtkWidget *trigger_mode_togglebutton;
 	GtkWidget *frame_rate_entry;
 	GtkWidget *exposure_spin_button;
 	GtkWidget *gain_spin_button;
@@ -189,6 +191,8 @@ struct  _ArvViewer {
 	gulong gain_hscale_changed;
 	gulong auto_gain_clicked;
 	gulong auto_exposure_clicked;
+	gulong trigger_mode_clicked;
+	gulong trigger_source_changed;
 	gulong camera_x_changed;
 	gulong camera_y_changed;
 	gulong camera_binning_x_changed;
@@ -609,12 +613,17 @@ auto_gain_cb (GtkToggleButton *toggle, ArvViewer *viewer)
 static void
 set_camera_widgets(ArvViewer *viewer)
 {
+	GtkListStore *list_store;
+	GtkTreeIter iter;
+	guint i, n_trigger_sources, current_trigger_source_index = -1;
+	const char *trigger_source_string;
+	const char **trigger_source_strings;
 	g_autofree char *string;
 	double gain_min, gain_max;
 	gboolean is_frame_rate_available;
 	gboolean is_gain_available;
 	gboolean is_exposure_available;
-	gboolean auto_gain, auto_exposure;
+	gboolean auto_gain, auto_exposure, trigger_mode;
 
 	g_signal_handler_block (viewer->gain_hscale, viewer->gain_hscale_changed);
 	g_signal_handler_block (viewer->gain_spin_button, viewer->gain_spin_changed);
@@ -653,12 +662,15 @@ set_camera_widgets(ArvViewer *viewer)
 
 	auto_gain = arv_camera_get_gain_auto (viewer->camera, NULL) != ARV_AUTO_OFF;
 	auto_exposure = arv_camera_get_exposure_time_auto (viewer->camera, NULL) != ARV_AUTO_OFF;
+	trigger_mode = g_strcmp0(arv_camera_get_string (viewer->camera, "TriggerMode", NULL), "On") == 0;
+	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (viewer->trigger_mode_togglebutton), trigger_mode);
 
 	update_gain_ui (viewer, auto_gain);
 	update_exposure_ui (viewer, auto_exposure);
 
 	g_signal_handler_block (viewer->auto_gain_toggle, viewer->auto_gain_clicked);
 	g_signal_handler_block (viewer->auto_exposure_toggle, viewer->auto_exposure_clicked);
+	g_signal_handler_block (viewer->trigger_mode_togglebutton, viewer->trigger_mode_clicked);
 
 	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (viewer->auto_gain_toggle), auto_gain);
 	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (viewer->auto_exposure_toggle), auto_exposure);
@@ -667,9 +679,38 @@ set_camera_widgets(ArvViewer *viewer)
 		arv_camera_is_gain_auto_available (viewer->camera, NULL));
 	gtk_widget_set_sensitive (viewer->auto_exposure_toggle,
 		arv_camera_is_exposure_auto_available (viewer->camera, NULL));
+	gtk_widget_set_sensitive (viewer->trigger_mode_togglebutton,
+		arv_camera_is_feature_available (viewer->camera, "TriggerMode", NULL));
+	gtk_widget_set_sensitive (viewer->trigger_button,
+		arv_camera_is_feature_available (viewer->camera, "TriggerSoftware", NULL));
 
 	g_signal_handler_unblock (viewer->auto_gain_toggle, viewer->auto_gain_clicked);
 	g_signal_handler_unblock (viewer->auto_exposure_toggle, viewer->auto_exposure_clicked);
+	g_signal_handler_unblock (viewer->trigger_mode_togglebutton, viewer->trigger_mode_clicked);
+
+	g_signal_handler_block (viewer->trigger_source_combo_box, viewer->trigger_source_changed);
+
+	list_store = GTK_LIST_STORE (gtk_combo_box_get_model (GTK_COMBO_BOX (viewer->trigger_source_combo_box)));
+	gtk_list_store_clear (list_store);
+	trigger_source_strings =
+	    arv_camera_dup_available_enumerations_as_strings (viewer->camera, "TriggerSource", &n_trigger_sources, NULL);
+	trigger_source_string = arv_camera_get_trigger_source (viewer->camera, NULL);
+	for (i = 0; i < n_trigger_sources; i++) {
+		gtk_list_store_append (list_store, &iter);
+		if (current_trigger_source_index < 0 ||
+		    g_strcmp0 (trigger_source_strings[i], trigger_source_string) == 0)
+			current_trigger_source_index = i;
+		gtk_list_store_set (list_store, &iter, 0, trigger_source_strings[i], -1);
+		printf("- Add source %s\n", trigger_source_strings[i]);
+	}
+	g_free (trigger_source_strings);
+
+	printf("Current trigger source = %s, index = %d\n", trigger_source_string, current_trigger_source_index);
+
+	gtk_combo_box_set_active (GTK_COMBO_BOX (viewer->trigger_source_combo_box),
+				  current_trigger_source_index >= 0 ? current_trigger_source_index : 0);
+
+	g_signal_handler_unblock (viewer->trigger_source_combo_box, viewer->trigger_source_changed);
 }
 
 static gboolean
@@ -994,6 +1035,16 @@ pixel_format_combo_cb (GtkComboBoxText *combo, ArvViewer *viewer)
 	pixel_format = gtk_combo_box_text_get_active_text (combo);
 	arv_camera_set_pixel_format_from_string (viewer->camera, pixel_format, NULL);
 	g_free (pixel_format);
+}
+
+static void
+trigger_source_combo_cb (GtkComboBoxText *combo, ArvViewer *viewer)
+{
+	char *trigger_source;
+
+	trigger_source = gtk_combo_box_text_get_active_text (combo);
+	arv_camera_set_trigger_source (viewer->camera, trigger_source, NULL);
+	g_free (trigger_source);
 }
 
 static void
@@ -1475,6 +1526,21 @@ video_frame_realize_cb (GtkWidget * widget, ArvViewer *viewer)
 }
 
 static void
+trigger_mode_cb (GtkToggleButton *toggle, ArvViewer *viewer)
+{
+	if (ARV_IS_CAMERA (viewer->camera))
+		arv_camera_set_string (viewer->camera, "TriggerMode",
+				       gtk_toggle_button_get_active (toggle) ? "On" : "Off", NULL);
+}
+
+static void
+trigger_cb (GtkButton *button, ArvViewer *viewer)
+{
+	if (ARV_IS_CAMERA (viewer->camera))
+		arv_camera_software_trigger (viewer->camera, NULL);
+}
+
+static void
 activate (GApplication *application)
 {
 	ArvViewer *viewer = (ArvViewer *) application;
@@ -1505,7 +1571,9 @@ activate (GApplication *application)
 	viewer->video_frame = GTK_WIDGET (gtk_builder_get_object (builder, "video_frame"));
 	viewer->fps_label = GTK_WIDGET (gtk_builder_get_object (builder, "fps_label"));
 	viewer->image_label = GTK_WIDGET (gtk_builder_get_object (builder, "image_label"));
-	viewer->trigger_combo_box = GTK_WIDGET (gtk_builder_get_object (builder, "trigger_combobox"));
+	viewer->trigger_source_combo_box = GTK_WIDGET (gtk_builder_get_object (builder, "trigger_source_combobox"));
+	viewer->trigger_button = GTK_WIDGET (gtk_builder_get_object (builder, "trigger_button"));
+	viewer->trigger_mode_togglebutton = GTK_WIDGET (gtk_builder_get_object (builder, "trigger_mode_togglebutton"));
 	viewer->frame_rate_entry = GTK_WIDGET (gtk_builder_get_object (builder, "frame_rate_entry"));
 	viewer->exposure_spin_button = GTK_WIDGET (gtk_builder_get_object (builder, "exposure_spinbutton"));
 	viewer->gain_spin_button = GTK_WIDGET (gtk_builder_get_object (builder, "gain_spinbutton"));
@@ -1534,7 +1602,12 @@ activate (GApplication *application)
         gtk_cell_layout_set_attributes (GTK_CELL_LAYOUT (viewer->pixel_format_combo), renderer, "text", 0, NULL);
         gtk_cell_layout_set_cell_data_func (GTK_CELL_LAYOUT (viewer->pixel_format_combo), renderer, set_sensitive, NULL, NULL);
 
-	gtk_widget_set_no_show_all (viewer->trigger_combo_box, TRUE);
+	list_store = gtk_list_store_new(1, G_TYPE_STRING);
+	gtk_combo_box_set_model (GTK_COMBO_BOX (viewer->trigger_source_combo_box), GTK_TREE_MODEL (list_store));
+
+	gtk_cell_layout_clear (GTK_CELL_LAYOUT (viewer->trigger_source_combo_box));
+	gtk_cell_layout_pack_start (GTK_CELL_LAYOUT (viewer->trigger_source_combo_box), renderer, TRUE);
+	gtk_cell_layout_set_attributes (GTK_CELL_LAYOUT (viewer->trigger_source_combo_box), renderer, "text", 0, NULL);
 
 	gtk_widget_show_all (viewer->main_window);
 
@@ -1550,6 +1623,7 @@ activate (GApplication *application)
 	g_signal_connect (viewer->flip_vertical_toggle, "clicked", G_CALLBACK (flip_vertical_cb), viewer);
 	g_signal_connect (viewer->frame_rate_entry, "activate", G_CALLBACK (frame_rate_entry_cb), viewer);
 	g_signal_connect (viewer->frame_rate_entry, "focus-out-event", G_CALLBACK (frame_rate_entry_focus_cb), viewer);
+	g_signal_connect (viewer->trigger_button, "clicked", G_CALLBACK (trigger_cb), viewer);
 
 	if (!has_gtksink && !has_gtkglsink) {
 		g_signal_connect (viewer->video_frame, "realize", G_CALLBACK (video_frame_realize_cb), viewer);
@@ -1569,6 +1643,9 @@ activate (GApplication *application)
 							  G_CALLBACK (auto_exposure_cb), viewer);
 	viewer->auto_gain_clicked = g_signal_connect (viewer->auto_gain_toggle, "clicked",
 						      G_CALLBACK (auto_gain_cb), viewer);
+	viewer->trigger_mode_clicked = g_signal_connect (viewer->trigger_mode_togglebutton, "clicked", G_CALLBACK (trigger_mode_cb), viewer);
+	viewer->trigger_source_changed = g_signal_connect (viewer->trigger_source_combo_box, "changed",
+							 G_CALLBACK (trigger_source_combo_cb), viewer);
 	viewer->pixel_format_changed = g_signal_connect (viewer->pixel_format_combo, "changed",
 							 G_CALLBACK (pixel_format_combo_cb), viewer);
 	viewer->camera_x_changed = g_signal_connect (viewer->camera_x, "value-changed",
