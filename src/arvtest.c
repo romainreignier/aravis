@@ -701,11 +701,13 @@ arv_test_software_trigger (ArvTest *test, const char *test_name, ArvTestCamera *
                 arv_camera_set_trigger (test_camera->camera, "Software", &error);
 
         if (error != NULL) {
-                arv_test_camera_add_result (test_camera, test_name, "BufferCheck",
+                arv_test_camera_add_result (test_camera, test_name, "SetTriggerSoftware",
                                             ARV_TEST_STATUS_FAILURE, error->message);
                 g_clear_error (&error);
                 return;
         }
+
+        g_usleep (1000000.0 * 0.02);
 
         stream = arv_camera_create_stream (test_camera->camera, NULL, NULL, &error);
         if (error == NULL)
