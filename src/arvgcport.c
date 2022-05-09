@@ -97,9 +97,19 @@ _use_legacy_endianness_mechanism (ArvGcPort *port, guint64 length)
 {
 	ArvDomDocument *document;
 	ArvGcRegisterDescriptionNode *register_description;
+	const char *vendor_name;
+	const char *model_name;
 
 	document = arv_dom_node_get_owner_document (ARV_DOM_NODE (port));
 	register_description = ARV_GC_REGISTER_DESCRIPTION_NODE (arv_dom_document_get_document_element (document));
+
+	vendor_name = arv_gc_register_description_node_get_vendor_name(register_description);
+	model_name = arv_gc_register_description_node_get_model_name(register_description);
+
+	// Imperx workaround
+	if (g_strcmp0 (vendor_name, "Imperx") == 0 && g_strcmp0 (model_name, "IpxGEVCamera") == 0) {
+		return length == 4;
+	}
 
 	return length == 4 && (arv_gc_register_description_node_compare_schema_version (register_description, 1, 1, 0) < 0);
 }
