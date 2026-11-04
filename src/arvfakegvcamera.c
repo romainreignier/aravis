@@ -21,6 +21,7 @@
  */
 
 #include <arvdebugprivate.h>
+#include <arvgvcpprivate.h>
 #include <arv.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -37,6 +38,8 @@ static char *arv_option_interface_name = NULL;
 static char *arv_option_serial_number = NULL;
 static char *arv_option_genicam_file = NULL;
 static double arv_option_gvsp_lost_ratio = 0.0;
+static gboolean arv_option_no_packet_resend = FALSE;
+static int arv_option_packet_delay_ns = 0;
 static char *arv_option_debug_domains = NULL;
 
 static const GOptionEntry arv_option_entries[] =
@@ -49,6 +52,11 @@ static const GOptionEntry arv_option_entries[] =
 	        &arv_option_genicam_file, 	"XML Genicam file to use", "genicam_filename"},
 	{ "gvsp-lost-ratio",    'r', 0, G_OPTION_ARG_DOUBLE,
 	        &arv_option_gvsp_lost_ratio,	"GVSP lost packet ratio", "packet_per_thousand"},
+	{ "no-packet-resend",	'n', 0, G_OPTION_ARG_NONE,
+		&arv_option_no_packet_resend,	"Disable the packet resend support", NULL},
+	{ "packet-delay",	'p', 0, G_OPTION_ARG_INT,
+		&arv_option_packet_delay_ns,	"Default inter packet delay (GevSCPD), limiting the bandwidth",
+		"<delay_ns>"},
 	{
 		"debug", 			'd', 0, G_OPTION_ARG_STRING,
 		&arv_option_debug_domains, 	NULL,
@@ -67,7 +75,14 @@ description_content[] =
 "\n"
 "arv-fake-gv-camera-" ARAVIS_API_VERSION " -i eth0\n"
 "arv-fake-gv-camera-" ARAVIS_API_VERSION " -i 127.0.0.1\n"
-"arv-fake-gv-camera-" ARAVIS_API_VERSION " -s GV02 -d all\n";
+"arv-fake-gv-camera-" ARAVIS_API_VERSION " -s GV02 -d all\n"
+"\n"
+"The packet resend requests are honored for the last 2 frames. On a congested\n"
+"network, or with several fake cameras sending large frames at the same time,\n"
+"the --packet-delay option limits the bandwidth used by the camera, until the\n"
+"client overwrites it with GevSCPD. For example, with 1500 bytes packets:\n"
+"\n"
+"arv-fake-gv-camera-" ARAVIS_API_VERSION " -i eth0 -p 12000   (~1 Gb/s)\n";
 
 int
 main (int argc, char **argv)
@@ -100,7 +115,16 @@ main (int argc, char **argv)
 
 	gv_camera = arv_gv_fake_camera_new_full (arv_option_interface_name, arv_option_serial_number, arv_option_genicam_file);
 
-	g_object_set (gv_camera, "gvsp-lost-ratio", arv_option_gvsp_lost_ratio / 1000.0, NULL);
+	g_object_set (gv_camera,
+		      "gvsp-lost-ratio", arv_option_gvsp_lost_ratio / 1000.0,
+		      "packet-resend", !arv_option_no_packet_resend,
+		      NULL);
+
+	/* The fake camera timestamp tick frequency is 1 GHz */
+	if (arv_option_packet_delay_ns > 0)
+		arv_fake_camera_write_register (arv_gv_fake_camera_get_fake_camera (gv_camera),
+						ARV_GVBS_STREAM_CHANNEL_0_PACKET_DELAY_OFFSET,
+						arv_option_packet_delay_ns);
 
 	signal (SIGINT, set_cancel);
 

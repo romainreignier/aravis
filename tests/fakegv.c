@@ -4,6 +4,7 @@
 #include <arv.h>
 
 static ArvCamera *camera = NULL;
+static ArvGvFakeCamera *simulator = NULL;
 
 static void
 discovery_test (void)
@@ -264,10 +265,53 @@ dynamic_roi_test (void)
 	g_clear_object (&stream);
 }
 
+static void
+packet_resend_test (void)
+{
+	ArvStream *stream;
+	GError *error = NULL;
+	size_t payload;
+	guint64 n_resend_requests;
+	unsigned i;
+
+	/* Drop 2% of the GVSP packets, they must be recovered by the packet resend mechanism */
+	g_object_set (simulator, "gvsp-lost-ratio", 0.02, NULL);
+
+	arv_camera_set_region (camera, 0, 0, 512, 512, NULL);
+
+	stream = arv_camera_create_stream (camera, NULL, NULL, NULL, &error);
+	g_assert (ARV_IS_STREAM (stream));
+	g_assert (error == NULL);
+
+	payload = arv_camera_get_payload (camera, NULL);
+
+	for (i = 0; i < 5; i++)
+		arv_stream_push_buffer (stream, arv_buffer_new (payload, NULL));
+
+	arv_camera_start_acquisition (camera, NULL);
+
+	for (i = 0; i < 10; i++) {
+		ArvBuffer *buffer;
+
+		buffer = arv_stream_timeout_pop_buffer (stream, 2000000);
+		g_assert (ARV_IS_BUFFER (buffer));
+		g_assert_cmpint (arv_buffer_get_status (buffer), ==, ARV_BUFFER_STATUS_SUCCESS);
+		arv_stream_push_buffer (stream, buffer);
+	}
+
+	arv_camera_stop_acquisition (camera, NULL);
+
+	n_resend_requests = arv_stream_get_info_uint64_by_name (stream, "n_resend_requests");
+	g_assert_cmpint (n_resend_requests, >, 0);
+
+	g_clear_object (&stream);
+
+	g_object_set (simulator, "gvsp-lost-ratio", 0.0, NULL);
+}
+
 int
 main (int argc, char *argv[])
 {
-	ArvGvFakeCamera *simulator;
 	int result;
 
 	g_test_init (&argc, &argv, NULL);
@@ -287,6 +331,7 @@ main (int argc, char *argv[])
 	g_test_add_func ("/fakegv/acquisition", acquisition_test);
 	g_test_add_func ("/fakegv/stream", stream_test);
 	g_test_add_func ("/fakegv/dynamic_roi", dynamic_roi_test);
+	g_test_add_func ("/fakegv/packet_resend", packet_resend_test);
 
 	result = g_test_run();
 
